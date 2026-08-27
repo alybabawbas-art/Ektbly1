@@ -1,0 +1,10 @@
+{
+  "name": "EKTBLY",
+  "description": "تطبيق تحويل الصوت العربي إلى نص مكتوب - مشروع طلاب برنامج سفراء الذكاء الاصطناعي",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
