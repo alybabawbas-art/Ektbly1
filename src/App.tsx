@@ -61,6 +61,115 @@ export default function App() {
     return cleanType || 'audio/webm';
   };
 
+  // Safe server response parsing
+  const parseServerResponse = async (response: Response) => {
+    const rawBody = await response.text();
+
+    if (!rawBody.trim()) {
+      const error = new Error(
+        response.ok
+          ? 'EMPTY_SERVER_RESPONSE'
+          : `EMPTY_ERROR_RESPONSE_${response.status}`
+      );
+      (error as any).status = response.status;
+      throw error;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+    } catch {
+      const error = new Error(`INVALID_SERVER_RESPONSE_${response.status}`);
+      (error as any).status = response.status;
+      throw error;
+    }
+
+    if (!response.ok) {
+      const error = new Error(data?.error || 'TRANSCRIPTION_FAILED');
+      (error as any).status = response.status;
+      throw error;
+    }
+
+    return data;
+  };
+
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Automatic retry for temporary failures
+  const transcribeWithRetry = async (
+    request: () => Promise<Response>,
+    maxAttempts = 3
+  ) => {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await request();
+
+        if (
+          [408, 429, 500, 502, 503, 504].includes(response.status) &&
+          attempt < maxAttempts
+        ) {
+          await wait(1000 * Math.pow(2, attempt - 1));
+          continue;
+        }
+
+        return await parseServerResponse(response);
+      } catch (error: any) {
+        lastError = error;
+
+        // If the error was a transient status code, retry
+        const status = error?.status;
+        if (
+          attempt < maxAttempts &&
+          (!status || [408, 429, 500, 502, 503, 504].includes(status))
+        ) {
+          await wait(1000 * Math.pow(2, attempt - 1));
+          continue;
+        }
+
+        if (attempt >= maxAttempts) {
+          break;
+        }
+      }
+    }
+
+    throw lastError;
+  };
+
+  // Convert technical/server errors to clear user-facing messages
+  const getUserFriendlyErrorMessage = (error: any): string => {
+    const status = error?.status;
+    const msg = error?.message || '';
+
+    if (status === 429) {
+      return 'تم الوصول إلى الحد المؤقت لاستخدام الخدمة. انتظر قليلًا ثم أعد المحاولة.';
+    }
+
+    if (status === 413) {
+      return 'حجم الملف الصوتي أكبر من الحد المسموح.';
+    }
+
+    if (status === 408 || status === 504 || msg.includes('TIMEOUT') || msg.includes('Timeout')) {
+      return 'استغرق التحويل وقتًا أطول من المتوقع. يرجى إعادة المحاولة.';
+    }
+
+    if (
+      msg.includes('EMPTY_SERVER_RESPONSE') ||
+      msg.includes('EMPTY_ERROR_RESPONSE') ||
+      msg.includes('INVALID_SERVER_RESPONSE')
+    ) {
+      return 'لم يصل رد مكتمل من الخادم. يرجى إعادة المحاولة.';
+    }
+
+    // Check if the error is already a friendly Arabic string returned from server
+    if (/[\u0600-\u06FF]/.test(msg)) {
+      return msg;
+    }
+
+    return 'حدث خطأ مؤقت أثناء التحويل. يرجى إعادة المحاولة.';
+  };
+
   // Perform transcription via backend
   const handleTranscribe = async () => {
     if (!currentAudio) return;
@@ -72,34 +181,30 @@ export default function App() {
       const base64Data = await fileToBase64(currentAudio.blob);
       const normalizedMimeType = normalizeAudioMimeType(currentAudio.type, currentAudio.name);
 
-      const response = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioBase64: base64Data,
-          mimeType: normalizedMimeType,
-          fileName: currentAudio.name,
-        }),
-      });
+      const data = await transcribeWithRetry(
+        () =>
+          fetch('/api/transcribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              audioBase64: base64Data,
+              mimeType: normalizedMimeType,
+              fileName: currentAudio.name,
+            }),
+          }),
+        3
+      );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'تعذر إتمام عملية التفريغ الصوتي. يرجى المحاولة مرة أخرى.');
-      }
-
-      if (data.transcript) {
+      if (data?.transcript) {
         setTranscript(data.transcript);
       } else {
-        throw new Error('لم يُرجع نموذج التحويل نصًا. يرجى إعادة المحاولة.');
+        throw new Error('لم يصل رد مكتمل من الخادم. يرجى إعادة المحاولة.');
       }
     } catch (err: any) {
       console.error('Transcription error:', err);
-      setTranscribeError(
-        err.message || 'تعذر إرسال بيانات الصوت بصورة صحيحة. يرجى المحاولة مجدداً.'
-      );
+      setTranscribeError(getUserFriendlyErrorMessage(err));
     } finally {
       setIsTranscribing(false);
     }

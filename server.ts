@@ -193,25 +193,40 @@ app.post('/api/transcribe', async (req, res) => {
       transcript: cleanTranscript,
     });
   } catch (error: any) {
-    console.error('Transcription API error:', error);
-    const errorMessage = error?.message || '';
+    console.error('Transcription API error:', {
+      name: error?.name,
+      status: error?.status,
+      message: error?.message,
+    });
 
-    if (errorMessage.includes('quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-      return res.status(429).json({
-        error: 'تم تجاوز الحد المسموح به من الطلبات مؤقتاً. يرجى الانتظار دقيقة والمحاولة مرة أخرى.',
-      });
-    }
+    const status =
+      error?.status === 429 ? 429 :
+      error?.status >= 400 && error?.status < 600 ? error.status :
+      500;
 
-    if (errorMessage.includes('invalid') || errorMessage.includes('format') || errorMessage.includes('unsupported')) {
-      return res.status(400).json({
-        error: 'صيغة الملف الصوتي غير مدعومة.',
-      });
-    }
-
-    return res.status(500).json({
-      error: 'تعذر إتمام عملية التفريغ الصوتي عبر الذكاء الاصطناعي. يرجى إعادة المحاولة.',
+    return res.status(status).json({
+      error:
+        status === 429
+          ? 'تم الوصول إلى الحد المؤقت لاستخدام خدمة التحويل. انتظر قليلًا ثم أعد المحاولة.'
+          : 'تعذر إكمال التحويل مؤقتًا. يرجى إعادة المحاولة.',
     });
   }
+});
+
+// Final Express error handler that always returns JSON
+app.use((error: any, req: any, res: any, next: any) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const status = error?.type === 'entity.too.large' ? 413 : 500;
+
+  return res.status(status).json({
+    error:
+      status === 413
+        ? 'حجم الملف الصوتي أكبر من الحد المسموح.'
+        : 'حدث خطأ مؤقت في الخادم. يرجى إعادة المحاولة.',
+  });
 });
 
 // Setup Vite or static serving
