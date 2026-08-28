@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ektblyBackground from '../assets/ektbly-background.jpg';
+import ektblyBackgroundV2 from '../assets/ektbly-background-v2.jpg';
 import { AppView, InputMode, AudioItem } from './types';
 import { IntroLandingPage } from './components/IntroLandingPage';
 import { AppHeader } from './components/AppHeader';
@@ -130,7 +130,7 @@ export default function App() {
 
   // Render Introductory Landing Page (Hero section with background)
   if (currentView === 'landing') {
-    return <IntroLandingPage onStart={() => setCurrentView('transcribe')} backgroundImage={ektblyBackground} />;
+    return <IntroLandingPage onStart={() => setCurrentView('transcribe')} backgroundImage={ektblyBackgroundV2} />;
   }
 
   // Render Main Transcription Page (Page 2)

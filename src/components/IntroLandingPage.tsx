@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
-import defaultEktblyBackground from '../../assets/ektbly-background.jpg';
+import defaultEktblyBackgroundV2 from '../assets/ektbly-background-v2.jpg';
 
 interface IntroLandingPageProps {
   onStart: () => void;
@@ -9,13 +9,13 @@ interface IntroLandingPageProps {
 
 export const IntroLandingPage: React.FC<IntroLandingPageProps> = ({ 
   onStart, 
-  backgroundImage = defaultEktblyBackground 
+  backgroundImage = defaultEktblyBackgroundV2 
 }) => {
   return (
     <div id="ektbly-intro-page" className="w-full min-h-screen bg-white text-[#17324D] font-sans" dir="rtl">
       {/* 
         HERO SECTION:
-        - Uses imported ektblyBackground image
+        - Uses imported ektblyBackgroundV2 image
         - Fills the full browser width and 100vh height
         - Background covers smoothly without stretching
         - Embedded EKTBLY logo and text on the image remain visible

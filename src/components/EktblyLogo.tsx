@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ektblyLogoImg from '../../assets/ektbly-background.jpg';
+import ektblyLogoImg from '../assets/ektbly-background-v2.jpg';
 
 interface EktblyLogoProps {
   variant?: 'header' | 'prominent';
