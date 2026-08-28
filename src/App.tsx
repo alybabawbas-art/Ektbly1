@@ -18,17 +18,47 @@ export default function App() {
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
-  // Helper to convert Blob to Base64
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        resolve(result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  // Reliable conversion of complete audio Blob into Base64
+  const fileToBase64 = async (file: Blob): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+
+    let binary = '';
+    const chunkSize = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+
+    return btoa(binary);
+  };
+
+  // Normalize audio MIME types
+  const normalizeAudioMimeType = (type: string, fileName = ''): string => {
+    const cleanType = (type || '').toLowerCase().split(';')[0].trim();
+    const extension = fileName.split('.').pop()?.toLowerCase();
+
+    if (cleanType === 'audio/x-m4a' || cleanType === 'audio/m4a' || extension === 'm4a') {
+      return 'audio/mp4';
+    }
+
+    if (cleanType === 'audio/mpeg' || cleanType === 'audio/mp3' || extension === 'mp3') {
+      return 'audio/mpeg';
+    }
+
+    if (cleanType === 'audio/wav' || cleanType === 'audio/x-wav' || extension === 'wav') {
+      return 'audio/wav';
+    }
+
+    if (cleanType === 'audio/ogg' || cleanType === 'audio/opus' || extension === 'ogg' || extension === 'opus') {
+      return 'audio/ogg';
+    }
+
+    if (cleanType === 'audio/webm' || extension === 'webm') {
+      return 'audio/webm';
+    }
+
+    return cleanType || 'audio/webm';
   };
 
   // Perform transcription via backend
@@ -39,7 +69,8 @@ export default function App() {
     setTranscribeError(null);
 
     try {
-      const base64Data = await blobToBase64(currentAudio.blob);
+      const base64Data = await fileToBase64(currentAudio.blob);
+      const normalizedMimeType = normalizeAudioMimeType(currentAudio.type, currentAudio.name);
 
       const response = await fetch('/api/transcribe', {
         method: 'POST',
@@ -47,8 +78,8 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audioData: base64Data,
-          mimeType: currentAudio.type || 'audio/webm',
+          audioBase64: base64Data,
+          mimeType: normalizedMimeType,
           fileName: currentAudio.name,
         }),
       });
@@ -56,18 +87,18 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'فشلت عملية تحويل الصوت إلى نص. يرجى المحاولة مرة أخرى.');
+        throw new Error(data.error || 'تعذر إتمام عملية التفريغ الصوتي. يرجى المحاولة مرة أخرى.');
       }
 
       if (data.transcript) {
         setTranscript(data.transcript);
       } else {
-        throw new Error('لم يتم استلام أي نص مفرغ من الخدمة.');
+        throw new Error('لم يُرجع نموذج التحويل نصًا. يرجى إعادة المحاولة.');
       }
     } catch (err: any) {
       console.error('Transcription error:', err);
       setTranscribeError(
-        err.message || 'تعذر الاتصال بخدمة التفريغ الصوتي. يرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً.'
+        err.message || 'تعذر إرسال بيانات الصوت بصورة صحيحة. يرجى المحاولة مجدداً.'
       );
     } finally {
       setIsTranscribing(false);
